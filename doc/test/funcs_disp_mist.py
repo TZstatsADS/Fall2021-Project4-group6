@@ -72,7 +72,7 @@ def train_model_disp_mist(x, y, x_control, loss_function, EPS, cons_params=None)
 
     if loss_function == "logreg":
         # constructing the logistic loss problem
-        loss = cvxpy.sum(  logistic( cvxpy.multiply(-y, x*w) )  ) / num_points # we are converting y to a diagonal matrix for consistent
+        loss = cvxpy.sum(  logistic( cvxpy.multiply(-y, x@w) )  ) / num_points # we are converting y to a diagonal matrix for consistent
 
 
     # sometimes, its a good idea to give a starting point to the constrained solver
@@ -237,7 +237,7 @@ def get_constraint_list_cov(x_train, y_train, x_control_train, sensitive_attrs_t
 
                 #################################################################
                 # #DCCP constraints
-                dist_bound_prod = cvxpy.multiply(y_train[idx], x_train[idx] * w) # y.f(x)
+                dist_bound_prod = cvxpy.multiply(y_train[idx], x_train[idx] @ w) # y.f(x)
                 
                 cons_sum_dict[0][v] = cvxpy.sum( cvxpy.minimum(0, dist_bound_prod) ) * (s_val_to_avg[0][v] / len(x_train)) # avg misclassification distance from boundary
                 cons_sum_dict[1][v] = cvxpy.sum( cvxpy.minimum(0, cvxpy.multiply( (1 - y_train[idx])/2.0, dist_bound_prod) ) ) * (s_val_to_avg[1][v] / np.sum(y_train == -1)) # avg false positive distance from boundary (only operates on the ground truth neg dataset)
@@ -397,77 +397,6 @@ def get_sensitive_attr_constraint_fpr_fnr_cov(model, x_arr, y_arr_true, y_arr_di
     return cons_sum_dict
     
 
-def plot_fairness_acc_tradeoff(x_all, y_all, x_control_all, loss_function, cons_type):
 
-
-    # very the covariance threshold using a range of decreasing multiplicative factors and see the tradeoffs between accuracy and fairness
-    it = 0.2
-    mult_range = np.arange(1.0, 0.0-it, -it).tolist()
-
-    
-
-
-    positive_class_label = 1 # positive class is +1
-    test_acc = []
-    
-
-    # first get the original values of covariance in the unconstrained classifier -- these original values are not needed for reverse constraint    
-    test_acc_arr, train_acc_arr, correlation_dict_test_arr, correlation_dict_train_arr, cov_dict_test_arr, cov_dict_train_arr = compute_cross_validation_error(x_all, y_all, x_control_all, num_folds, loss_function, 0, apply_accuracy_constraint, sep_constraint, sensitive_attrs, [{} for i in range(0,num_folds)], 0)
-
-    for c in cov_range:
-        print("LOG: testing for multiplicative factor: %0.2f" % c)
-        sensitive_attrs_to_cov_original_arr_multiplied = []
-        for sensitive_attrs_to_cov_original in cov_dict_train_arr:
-            sensitive_attrs_to_cov_thresh = deepcopy(sensitive_attrs_to_cov_original)
-            for k in list(sensitive_attrs_to_cov_thresh.keys()):
-                v = sensitive_attrs_to_cov_thresh[k]
-                if type(v) == type({}):
-                    for k1 in list(v.keys()):
-                        v[k1] = v[k1] * c
-                else:
-                    sensitive_attrs_to_cov_thresh[k] = v * c
-            sensitive_attrs_to_cov_original_arr_multiplied.append(sensitive_attrs_to_cov_thresh)
-
-
-        test_acc_arr, train_acc_arr, correlation_dict_test_arr, correlation_dict_train_arr, cov_dict_test_arr, cov_dict_train_arr  = compute_cross_validation_error(x_all, y_all, x_control_all, num_folds, loss_function, apply_fairness_constraints, apply_accuracy_constraint, sep_constraint, sensitive_attrs, sensitive_attrs_to_cov_original_arr_multiplied, c)
-        test_acc.append(np.mean(test_acc_arr))
-
-
-        correlation_dict_train = get_avg_correlation_dict(correlation_dict_train_arr)
-        correlation_dict_test = get_avg_correlation_dict(correlation_dict_test_arr)
-        
-        # just plot the correlations for the first sensitive attr, the plotting can be extended for the other values, but as a proof of concept, we will jsut show for one
-        s = sensitive_attrs[0]    
-        
-        for k,v in list(correlation_dict_test[s].items()):
-            if v.get(positive_class_label) is None:
-                positive_per_category[k].append(0.0)
-            else:
-                positive_per_category[k].append(v[positive_class_label])
-    
-    positive_per_category = dict(positive_per_category)
-    
-    p_rule_arr = (np.array(positive_per_category[0]) / np.array(positive_per_category[1])) * 100.0
-    
-
-    ax = plt.subplot(2,1,1)
-    plt.plot(cov_range, positive_per_category[0], "-o" , color="green", label = "Protected")
-    plt.plot(cov_range, positive_per_category[1], "-o", color="blue", label = "Non-protected")
-    ax.set_xlim([min(cov_range), max(cov_range)])
-    plt.xlabel('Multiplicative loss factor')
-    plt.ylabel('Perc. in positive class')
-    if apply_accuracy_constraint == False:
-        plt.gca().invert_xaxis()
-        plt.xlabel('Multiplicative covariance factor (c)')
-    ax.legend()
-
-    ax = plt.subplot(2,1,2)
-    plt.scatter(p_rule_arr, test_acc, color="red")
-    ax.set_xlim([min(p_rule_arr), max(max(p_rule_arr), 100)])
-    plt.xlabel('P% rule')
-    plt.ylabel('Accuracy')
-
-    plt.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=None, hspace=0.5)
-    plt.show()
 
 
